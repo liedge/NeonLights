@@ -1,0 +1,23 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "building",
+  "group": "neon_lights",
+  "key": {
+    "d": {
+      "tag": "forge:dyes/orange"
+    },
+    "g": {
+      "item": "minecraft:glowstone"
+    }
+  },
+  "pattern": [
+    " g ",
+    "gdg",
+    " g "
+  ],
+  "result": {
+    "count": 16,
+    "item": "neonlights:orange_neon_light"
+  },
+  "show_notification": true
+}
