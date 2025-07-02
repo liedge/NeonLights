@@ -1,0 +1,6 @@
+{
+  "parent": "neonlights:block/light_block",
+  "textures": {
+    "all": "neonlights:block/neuro_blue_neon_light"
+  }
+}

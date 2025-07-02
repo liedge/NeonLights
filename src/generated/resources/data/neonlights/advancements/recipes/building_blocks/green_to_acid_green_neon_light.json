@@ -1,0 +1,35 @@
+{
+  "parent": "minecraft:recipes/root",
+  "criteria": {
+    "has_light": {
+      "conditions": {
+        "items": [
+          {
+            "items": [
+              "neonlights:green_neon_light"
+            ]
+          }
+        ]
+      },
+      "trigger": "minecraft:inventory_changed"
+    },
+    "has_the_recipe": {
+      "conditions": {
+        "recipe": "neonlights:green_to_acid_green_neon_light"
+      },
+      "trigger": "minecraft:recipe_unlocked"
+    }
+  },
+  "requirements": [
+    [
+      "has_light",
+      "has_the_recipe"
+    ]
+  ],
+  "rewards": {
+    "recipes": [
+      "neonlights:green_to_acid_green_neon_light"
+    ]
+  },
+  "sends_telemetry_event": false
+}

@@ -1,0 +1,8 @@
+{
+  "type": "minecraft:stonecutting",
+  "count": 1,
+  "ingredient": {
+    "item": "neonlights:green_neon_light"
+  },
+  "result": "neonlights:acid_green_neon_light"
+}

@@ -1,9 +1,14 @@
 package liedge.neonlights;
 
+import com.google.common.collect.ImmutableMap;
 import net.minecraft.Util;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
-import net.minecraft.world.item.*;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.item.BlockItem;
+import net.minecraft.world.item.CreativeModeTab;
+import net.minecraft.world.item.CreativeModeTabs;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.level.block.Block;
 import net.minecraftforge.event.BuildCreativeModeTabContentsEvent;
 import net.minecraftforge.eventbus.api.IEventBus;
@@ -12,12 +17,9 @@ import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
 import net.minecraftforge.registries.DeferredRegister;
 import net.minecraftforge.registries.ForgeRegistries;
 import net.minecraftforge.registries.RegistryObject;
-import oshi.util.tuples.Pair;
 
 import java.util.EnumMap;
 import java.util.Map;
-
-import static liedge.neonlights.NeonLightBlock.colorBlockName;
 
 @Mod(NeonLights.MODID)
 public class NeonLights
@@ -28,23 +30,49 @@ public class NeonLights
     private static final DeferredRegister<Item> ITEMS = DeferredRegister.create(ForgeRegistries.ITEMS, MODID);
     private static final DeferredRegister<CreativeModeTab> CREATIVE_MODE_TABS = DeferredRegister.create(Registries.CREATIVE_MODE_TAB, MODID);
 
-    public static final Map<DyeColor, Pair<RegistryObject<NeonLightBlock>, RegistryObject<Item>>> LIGHT_BLOCKS = Util.make(() -> {
-        Map<DyeColor, Pair<RegistryObject<NeonLightBlock>, RegistryObject<Item>>> map = new EnumMap<>(DyeColor.class);
+    static final String CREATIVE_TAB_LANG_KEY = "creative_tab." + MODID + ".main";
 
-        for (DyeColor color : DyeColor.values())
+    public static final Map<LightColor, RegistryObject<LightBlock>> LIGHT_BLOCKS = Util.make(() ->
+    {
+        Map<LightColor, RegistryObject<LightBlock>> map = new EnumMap<>(LightColor.class);
+        for (LightColor color : LightColor.values())
         {
-            RegistryObject<NeonLightBlock> blockRegistryObject = BLOCKS.register(colorBlockName(color), () -> new NeonLightBlock(color));
-            RegistryObject<Item> itemRegistryObject = ITEMS.register(colorBlockName(color), () -> new BlockItem(blockRegistryObject.get(), new Item.Properties()));
-            map.put(color, new Pair<>(blockRegistryObject, itemRegistryObject));
+            map.put(color, BLOCKS.register(color.getName() + "_neon_light", () -> new LightBlock(color)));
         }
-
-        return map;
+        return ImmutableMap.copyOf(map);
     });
 
+    public static final Map<LightColor, RegistryObject<BlockItem>> LIGHT_BLOCK_ITEMS = Util.make(() ->
+    {
+        Map<LightColor, RegistryObject<BlockItem>> map = new EnumMap<>(LightColor.class);
+        for (LightColor color : LightColor.values())
+        {
+            RegistryObject<BlockItem> registration = ITEMS.register(color.getName() + "_neon_light", () -> new BlockItem(getLightBlock(color), new Item.Properties()));
+            map.put(color, registration);
+        }
+        return ImmutableMap.copyOf(map);
+    });
+
+    public static LightBlock getLightBlock(LightColor lightColor)
+    {
+        return LIGHT_BLOCKS.get(lightColor).get();
+    }
+
+    public static BlockItem getLightBlockItem(LightColor lightColor)
+    {
+        return LIGHT_BLOCK_ITEMS.get(lightColor).get();
+    }
+
     public static final RegistryObject<CreativeModeTab> CREATIVE_TAB = CREATIVE_MODE_TABS.register("main", () -> CreativeModeTab.builder()
-            .title(Component.translatable("creative_tab.neonlights.main"))
-            .icon(() -> LIGHT_BLOCKS.get(DyeColor.LIME).getB().get().getDefaultInstance())
-            .displayItems((params, output) -> ITEMS.getEntries().forEach(ro -> output.accept(ro.get()))).build());
+            .title(Component.translatable(CREATIVE_TAB_LANG_KEY))
+            .icon(() -> getLightBlockItem(LightColor.LTX_LIME).getDefaultInstance())
+            .displayItems((params, output) -> LIGHT_BLOCK_ITEMS.values().forEach(ro -> output.accept(ro.get())))
+            .build());
+
+    public static ResourceLocation loc(String path)
+    {
+        return ResourceLocation.fromNamespaceAndPath(MODID, path);
+    }
 
     public NeonLights()
     {
@@ -61,7 +89,7 @@ public class NeonLights
     {
         if (event.getTabKey().equals(CreativeModeTabs.COLORED_BLOCKS))
         {
-            LIGHT_BLOCKS.values().forEach(pair -> event.accept(pair.getB()));
+            LIGHT_BLOCK_ITEMS.values().forEach(event::accept);
         }
     }
 }
