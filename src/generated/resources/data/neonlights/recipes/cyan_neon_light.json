@@ -1,19 +1,18 @@
 {
   "type": "minecraft:crafting_shaped",
   "category": "building",
-  "group": "neon_lights",
   "key": {
     "d": {
       "tag": "forge:dyes/cyan"
     },
-    "g": {
+    "m": {
       "item": "minecraft:glowstone"
     }
   },
   "pattern": [
-    " g ",
-    "gdg",
-    " g "
+    " m ",
+    "mdm",
+    " m "
   ],
   "result": {
     "count": 16,

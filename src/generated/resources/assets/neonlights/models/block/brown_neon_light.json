@@ -1,6 +1,6 @@
 {
   "parent": "neonlights:block/light_block",
   "textures": {
-    "all": "neonlights:block/brown"
+    "all": "neonlights:block/brown_neon_light"
   }
 }

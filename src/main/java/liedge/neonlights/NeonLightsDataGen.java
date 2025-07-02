@@ -1,29 +1,28 @@
 package liedge.neonlights;
 
-import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.data.DataGenerator;
 import net.minecraft.data.PackOutput;
 import net.minecraft.data.loot.BlockLootSubProvider;
 import net.minecraft.data.loot.LootTableProvider;
-import net.minecraft.data.recipes.FinishedRecipe;
-import net.minecraft.data.recipes.RecipeCategory;
-import net.minecraft.data.recipes.RecipeProvider;
-import net.minecraft.data.recipes.ShapedRecipeBuilder;
+import net.minecraft.data.recipes.*;
+import net.minecraft.data.tags.ItemTagsProvider;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.tags.BlockTags;
+import net.minecraft.tags.ItemTags;
 import net.minecraft.tags.TagKey;
 import net.minecraft.world.flag.FeatureFlags;
 import net.minecraft.world.item.DyeColor;
 import net.minecraft.world.item.Item;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.item.crafting.Ingredient;
+import net.minecraft.world.level.ItemLike;
 import net.minecraft.world.level.block.Block;
-import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.storage.loot.LootTable;
 import net.minecraft.world.level.storage.loot.ValidationContext;
 import net.minecraft.world.level.storage.loot.parameters.LootContextParamSets;
 import net.minecraftforge.client.model.generators.BlockStateProvider;
 import net.minecraftforge.client.model.generators.ModelFile;
-import net.minecraftforge.common.Tags;
 import net.minecraftforge.common.data.BlockTagsProvider;
 import net.minecraftforge.common.data.ExistingFileHelper;
 import net.minecraftforge.common.data.LanguageProvider;
@@ -34,17 +33,21 @@ import net.minecraftforge.registries.RegistryObject;
 import org.apache.commons.lang3.StringUtils;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Arrays;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
+import static liedge.neonlights.NeonLights.*;
+
 @Mod.EventBusSubscriber(modid = NeonLights.MODID, bus = Mod.EventBusSubscriber.Bus.MOD)
-public class NeonLightsDataGen
+public final class NeonLightsDataGen
 {
+    private NeonLightsDataGen() {}
+
+    public static final TagKey<Block> LIGHT_BLOCK_TAG = BlockTags.create(loc("light_blocks"));
+    public static final TagKey<Item> LIGHT_ITEM_TAG = ItemTags.create(loc("light_blocks"));
+
     @SubscribeEvent
     public static void onGatherData(final GatherDataEvent event)
     {
@@ -53,81 +56,119 @@ public class NeonLightsDataGen
 
         DataGenerator generator = event.getGenerator();
         PackOutput output = generator.getPackOutput();
-        CompletableFuture<HolderLookup.Provider> lookupProvider = event.getLookupProvider();
+        CompletableFuture<HolderLookup.Provider> registries = event.getLookupProvider();
         ExistingFileHelper helper = event.getExistingFileHelper();
 
-        generator.addProvider(runServer, new Recipes(output));
-        generator.addProvider(runServer, new LootTables(output));
-        generator.addProvider(runServer, new BlockTagsGen(output, lookupProvider, helper));
+        BlockTagsGen blockTags = new BlockTagsGen(output, registries, helper);
 
-        generator.addProvider(runClient, new BlockStates(output, helper));
-        generator.addProvider(runClient, new Language(output));
+        generator.addProvider(runServer, new RecipesGen(output));
+        generator.addProvider(runServer, new LootTablesGen(output));
+        generator.addProvider(runServer, blockTags);
+        generator.addProvider(runServer, new ItemTagsGen(output, registries, blockTags.contentsGetter(), helper));
+
+        generator.addProvider(runClient, new BlockStatesGen(output, helper));
+        generator.addProvider(runClient, new LanguageGen(output));
     }
 
     private static class BlockTagsGen extends BlockTagsProvider
     {
-        public BlockTagsGen(PackOutput output, CompletableFuture<HolderLookup.Provider> lookupProvider, @Nullable ExistingFileHelper existingFileHelper)
+        BlockTagsGen(PackOutput output, CompletableFuture<HolderLookup.Provider> registries, @Nullable ExistingFileHelper helper)
         {
-            super(output, lookupProvider, NeonLights.MODID, existingFileHelper);
+            super(output, registries, MODID, helper);
         }
 
         @Override
-        protected void addTags(HolderLookup.Provider provider)
+        protected void addTags(HolderLookup.Provider registries)
         {
-            IntrinsicTagAppender<Block> impermeable = tag(BlockTags.IMPERMEABLE);
-            NeonLights.LIGHT_BLOCKS.values().forEach(pair -> impermeable.add(pair.getA().get()));
+            IntrinsicTagAppender<Block> lightBlocks = tag(LIGHT_BLOCK_TAG);
+            for (LightColor lightColor : LightColor.values())
+            {
+                lightBlocks.add(NeonLights.getLightBlock(lightColor));
+            }
+
+            tag(BlockTags.IMPERMEABLE).addTag(LIGHT_BLOCK_TAG);
+            tag(BlockTags.MINEABLE_WITH_PICKAXE).addTag(LIGHT_BLOCK_TAG);
         }
     }
 
-    private static class Recipes extends RecipeProvider
+    private static class ItemTagsGen extends ItemTagsProvider
     {
-        public Recipes(PackOutput output)
+        ItemTagsGen(PackOutput output, CompletableFuture<HolderLookup.Provider> registries, CompletableFuture<TagLookup<Block>> blockTags, @Nullable ExistingFileHelper helper)
+        {
+            super(output, registries, blockTags, MODID, helper);
+        }
+
+        @Override
+        protected void addTags(HolderLookup.Provider registries)
+        {
+            copy(LIGHT_BLOCK_TAG, LIGHT_ITEM_TAG);
+        }
+    }
+
+    private static class RecipesGen extends RecipeProvider
+    {
+        RecipesGen(PackOutput output)
         {
             super(output);
         }
 
-        @Override
-        protected void buildRecipes(Consumer<FinishedRecipe> consumer)
+        private void standardRecipe(ItemLike lightBlockItem, DyeColor dyeColor, Consumer<FinishedRecipe> output)
         {
-            for (DyeColor color : DyeColor.values())
+            ShapedRecipeBuilder.shaped(RecipeCategory.BUILDING_BLOCKS, lightBlockItem, 16)
+                    .define('m', Items.GLOWSTONE)
+                    .define('d', dyeColor.getTag())
+                    .unlockedBy("has_glowstone", has(Items.GLOWSTONE))
+                    .pattern(" m ").pattern("mdm").pattern(" m ")
+                    .save(output);
+        }
+
+        private ResourceLocation stonecuttingRecipeName(LightColor first, LightColor second)
+        {
+            return loc(String.format("%s_to_%s_neon_light", first.getName(), second.getName()));
+        }
+
+        private void stonecuttingRecipe(LightColor ingredientColor, LightColor resultColor, Consumer<FinishedRecipe> output)
+        {
+            ItemLike ingredientBlock = NeonLights.getLightBlock(ingredientColor);
+            ItemLike resultBlock = NeonLights.getLightBlock(resultColor);
+
+            // Forward conversion
+            SingleItemRecipeBuilder.stonecutting(Ingredient.of(ingredientBlock), RecipeCategory.BUILDING_BLOCKS, resultBlock)
+                    .unlockedBy("has_light", has(ingredientBlock))
+                    .save(output, stonecuttingRecipeName(ingredientColor, resultColor));
+
+            // Backward conversion
+            SingleItemRecipeBuilder.stonecutting(Ingredient.of(resultBlock), RecipeCategory.BUILDING_BLOCKS, ingredientBlock)
+                    .unlockedBy("has_light", has(resultBlock))
+                    .save(output, stonecuttingRecipeName(resultColor, ingredientColor));
+        }
+
+        @Override
+        protected void buildRecipes(Consumer<FinishedRecipe> output)
+        {
+            // Standard colors
+            NeonLights.LIGHT_BLOCKS.forEach((color, registration) ->
             {
-                RegistryObject<NeonLightBlock> registryObject = NeonLights.LIGHT_BLOCKS.get(color).getA();
-
-                TagKey<Item> dyeKey = switch (registryObject.get().getColor())
+                DyeColor dyeColor = color.getDyeColor();
+                if (dyeColor != null)
                 {
-                    case WHITE -> Tags.Items.DYES_WHITE;
-                    case ORANGE -> Tags.Items.DYES_ORANGE;
-                    case MAGENTA -> Tags.Items.DYES_MAGENTA;
-                    case LIGHT_BLUE -> Tags.Items.DYES_LIGHT_BLUE;
-                    case YELLOW -> Tags.Items.DYES_YELLOW;
-                    case LIME -> Tags.Items.DYES_LIME;
-                    case PINK -> Tags.Items.DYES_PINK;
-                    case GRAY -> Tags.Items.DYES_GRAY;
-                    case LIGHT_GRAY -> Tags.Items.DYES_LIGHT_GRAY;
-                    case CYAN -> Tags.Items.DYES_CYAN;
-                    case PURPLE -> Tags.Items.DYES_PURPLE;
-                    case BLUE -> Tags.Items.DYES_BLUE;
-                    case BROWN -> Tags.Items.DYES_BROWN;
-                    case GREEN -> Tags.Items.DYES_GREEN;
-                    case RED -> Tags.Items.DYES_RED;
-                    case BLACK -> Tags.Items.DYES_BLACK;
-                };
+                    // Main crafting recipe
+                    standardRecipe(registration.get(), dyeColor, output);
+                }
+            });
 
-                ShapedRecipeBuilder
-                        .shaped(RecipeCategory.BUILDING_BLOCKS, registryObject.get(), 16)
-                        .define('g', Blocks.GLOWSTONE)
-                        .define('d', dyeKey)
-                        .pattern(" g ").pattern("gdg").pattern(" g ")
-                        .unlockedBy("get_glowstone", has(Blocks.GLOWSTONE))
-                        .group("neon_lights")
-                        .save(consumer);
-            }
+            // Non-standard colors
+            stonecuttingRecipe(LightColor.LIGHT_BLUE, LightColor.ENERGY_BLUE, output);
+            stonecuttingRecipe(LightColor.LIME, LightColor.LTX_LIME, output);
+            stonecuttingRecipe(LightColor.LIME, LightColor.ELECTRIC_CHARTREUSE, output);
+            stonecuttingRecipe(LightColor.BLUE, LightColor.NEURO_BLUE, output);
+            stonecuttingRecipe(LightColor.GREEN, LightColor.ACID_GREEN, output);
         }
     }
 
-    private static class LootTables extends LootTableProvider
+    private static class LootTablesGen extends LootTableProvider
     {
-        public LootTables(PackOutput output)
+        LootTablesGen(PackOutput output)
         {
             super(output, Set.of(), List.of(new SubProviderEntry(BlockLoot::new, LootContextParamSets.BLOCK)));
         }
@@ -138,70 +179,72 @@ public class NeonLightsDataGen
 
     private static class BlockLoot extends BlockLootSubProvider
     {
-        public BlockLoot()
+        BlockLoot()
         {
-            super(Set.of(), FeatureFlags.REGISTRY.allFlags(), new Object2ObjectOpenHashMap<>());
+            super(Set.of(), FeatureFlags.REGISTRY.allFlags());
         }
 
         @Override
         protected void generate()
         {
-            NeonLights.LIGHT_BLOCKS.values().forEach(pair -> dropSelf(pair.getA().get()));
+            NeonLights.LIGHT_BLOCKS.values().stream().map(RegistryObject::get).forEach(this::dropSelf);
         }
 
         @Override
         protected Iterable<Block> getKnownBlocks()
         {
-            return NeonLights.LIGHT_BLOCKS.values().stream().map(pair -> pair.getA().get()).collect(Collectors.toList());
+            return NeonLights.LIGHT_BLOCKS.values().stream().map(RegistryObject::get).collect(Collectors.toList());
         }
     }
 
-    private static class BlockStates extends BlockStateProvider
+    private static class BlockStatesGen extends BlockStateProvider
     {
         private final ExistingFileHelper helper;
 
-        public BlockStates(PackOutput output, ExistingFileHelper helper)
+        BlockStatesGen(PackOutput output, ExistingFileHelper helper)
         {
-            super(output, NeonLights.MODID, helper);
+            super(output, MODID, helper);
             this.helper = helper;
         }
 
         @Override
         protected void registerStatesAndModels()
         {
-            ModelFile lightBlockBase = new ModelFile.ExistingModelFile(blockFolderLocation("light_block"), helper);
-            for (DyeColor color : DyeColor.values())
+            ModelFile blockModel = new ModelFile.ExistingModelFile(blockFolderLocation("light_block"), helper);
+            NeonLights.LIGHT_BLOCKS.forEach((color, registration) ->
             {
-                RegistryObject<NeonLightBlock> registryObject = NeonLights.LIGHT_BLOCKS.get(color).getA();
-                NeonLightBlock block = registryObject.get();
-                simpleBlockWithItem(block, models().getBuilder(registryObject.getId().getPath()).parent(lightBlockBase).texture("all", blockFolderLocation(block.getColor().getSerializedName())));
-            }
+                String name = registration.getId().getPath();
+                simpleBlockWithItem(registration.get(), models().getBuilder(name).parent(blockModel).texture("all", blockFolderLocation(name)));
+            });
         }
 
         private ResourceLocation blockFolderLocation(String path)
         {
-            return new ResourceLocation(NeonLights.MODID, "block/" + path);
+            return loc("block/" + path);
         }
     }
 
-    private static class Language extends LanguageProvider
+    private static class LanguageGen extends LanguageProvider
     {
-        public Language(PackOutput output)
+        LanguageGen(PackOutput output)
         {
-            super(output, NeonLights.MODID, "en_us");
+            super(output, MODID, "en_us");
         }
 
         @Override
         protected void addTranslations()
         {
-            add("creative_tab.neonlights.main", "Neon Lights");
+            add(NeonLights.CREATIVE_TAB_LANG_KEY, "Neon Lights");
 
-            for (DyeColor color : DyeColor.values())
+            NeonLights.LIGHT_BLOCKS.forEach((color, registration) ->
             {
-                RegistryObject<NeonLightBlock> registryObject = NeonLights.LIGHT_BLOCKS.get(color).getA();
-                String name = Arrays.stream(registryObject.getId().getPath().split("_")).map(StringUtils::capitalize).collect(Collectors.joining(" "));
-                addBlock(registryObject, name);
-            }
+                if (color != LightColor.LTX_LIME)
+                {
+                    String name = Arrays.stream(registration.getId().getPath().split("_")).map(StringUtils::capitalize).collect(Collectors.joining(" "));
+                    addBlock(registration, name);
+                }
+            });
+            add(NeonLights.getLightBlock(LightColor.LTX_LIME), "LTX Lime Neon Light");
         }
     }
 }

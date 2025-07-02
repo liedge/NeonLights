@@ -1,7 +1,7 @@
 {
   "parent": "minecraft:recipes/root",
   "criteria": {
-    "get_glowstone": {
+    "has_glowstone": {
       "conditions": {
         "items": [
           {
@@ -22,7 +22,7 @@
   },
   "requirements": [
     [
-      "get_glowstone",
+      "has_glowstone",
       "has_the_recipe"
     ]
   ],

@@ -1,0 +1,8 @@
+{
+  "type": "minecraft:stonecutting",
+  "count": 1,
+  "ingredient": {
+    "item": "neonlights:ltx_lime_neon_light"
+  },
+  "result": "neonlights:lime_neon_light"
+}
